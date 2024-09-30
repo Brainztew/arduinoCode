@@ -1,63 +1,44 @@
-#include <WiFiS3.h>
-#include "settings.h"
-
-int led = 2;
-String ledStatus = "OFF";
-
-char ssid[] = SECRET_SSID;
-char pass[] = SECRET_PASSWORD;
-
-WiFiServer server(80);
-
-void setup() {
-  pinMode(led, OUTPUT);
-  // put your setup code here, to run once:
-
-  Serial.begin(9600);
-
-  Serial.println("Ansluter till WIFI...");
-
-  while (WiFi.begin(ssid, pass) != WL_CONNECTED) {
-    Serial.println(".");
-    delay(1000);
-  }
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-
-  IPAddress ip = WiFi.localIP();
-  Serial.print("IP Adress: ");
-  Serial.println(ip);
-
-  server.begin();
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
-
-  WiFiClient client = server.available();
+/*   WiFiClient client = server.available();
 
   if (client) {
     Serial.println("Ny klient ansluten!");
-    digitalWrite(led, HIGH);
     String request = client.readStringUntil('\r');
     Serial.println(request);
+
+    if (request.indexOf("/ON") != -1) {
+      ledStatus = "ON";
+      Serial.println("TÄND LAMPAN");
+      digitalWrite(led,HIGH);
+    } else if (request.indexOf("/OFF") != -1) {
+      ledStatus = "OFF";
+      Serial.println("SLÄCK LAMPAN");
+      digitalWrite(led,LOW); 
+    }
 
     client.println("HTTP/1.1 200 OK");
     client.println("Content-type:text/html");
     client.println();
     client.println("<html><body>");
-    client.println("<h1>hello, world!</h1>");
+    if (ledStatus == "OFF") {
+      client.println("<h1>LED IS TURNED OFF!</h1>");
+      client.print("<a href='http://");
+;      client.print(ip);
+      client.println("/ON'>TURN ON</a>");
+    } else {
+      client.println("<h1>LED IS TURNED ON!</h1>");
+       client.print("<a href='http://");
+      client.print(ip);
+      client.println("/OFF'>TURN OFF</a>");
+    }
+    
     client.println("</body></html>");
     client.println();
 
-    delay(10);
+    delay(2000);
 
     client.stop();
     Serial.println("Klient har kopplat ifrån!");
 
-    digitalWrite(led, LOW);
   }
 
-  delay(500);
-
-}
+  delay(500); */
