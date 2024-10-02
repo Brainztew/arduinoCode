@@ -14,8 +14,12 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 int sendDataLedOK = 10;
 int sendDataLedNOTOK = 11;
-int buttonPin = 13;
+int sendToDbLED = 2;
+int buttonPin = 4;
+int buttonPinSendToBackend = 3;
 int buttonState = 1;
+int buttonSendToBackendState = 1;
+int lastButtonSendToBackendState = 1;
 
 char ssid[] = SECRET_SSID;
 char pass[] = SECRET_PASSWORD;
@@ -31,20 +35,25 @@ WiFiServer server(80);
 IPAddress ip;
 unsigned long previousTempMillis = 0;
 unsigned long previousLiveMillis = 0;
+unsigned long previousScreenMillis = 0;
 const long tempInterval = 1800000; 
-const long liveInterval = 30000;   
+const long liveInterval = 30000;
+const long screenInterval = 30000;
+bool autoSending = false;   
 
 void setup() {
   pinMode(sendDataLedOK, OUTPUT);
   pinMode(sendDataLedNOTOK, OUTPUT);
+  pinMode(sendToDbLED, OUTPUT);
   pinMode(buttonPin, INPUT);
+  pinMode(buttonPinSendToBackend, INPUT);
   Serial.begin(9600);
   dht.begin();
-  client.setTimeout(3000);
+  client.setTimeout(5000); 
   float temperature = dht.readTemperature();
   float humidity = dht.readHumidity();
 
-  Serial.println("Ansluter till WIFI...");
+  Serial.println("Connecting to WIFI...");
 
   while (WiFi.begin(ssid, pass) != WL_CONNECTED) {
     Serial.println(".");
@@ -54,7 +63,7 @@ void setup() {
   Serial.println(WiFi.SSID());
 
   ip = WiFi.localIP();
-  Serial.print("IP Adress: ");
+  Serial.print("IP Address: ");
   Serial.println(ip);
   //server.begin();
 
@@ -66,21 +75,22 @@ void setup() {
   lcd.print("Values in 5 sec!");
   delay(5000);
   setScreen(temperature, humidity);
-
 }
 
 void loop() {
-  
   float temperature = dht.readTemperature();
   float humidity = dht.readHumidity();
-  delay(30000);
-  setScreen(temperature, humidity);
+
   buttonState = digitalRead(buttonPin);
+  buttonSendToBackendState = digitalRead(buttonPinSendToBackend);
 
   unsigned long currentMillis = millis();
-  
-  
-  if (currentMillis - previousTempMillis >= tempInterval) {
+
+  if (currentMillis - previousScreenMillis >= screenInterval) {
+    previousScreenMillis = currentMillis;
+    setScreen(temperature, humidity);
+  }
+  if (autoSending && currentMillis - previousTempMillis >= tempInterval) {
     previousTempMillis = currentMillis;
     sendTempToBackend(temperature, humidity);
   }
@@ -89,13 +99,24 @@ void loop() {
     previousLiveMillis = currentMillis;
     sendLiveTempToBackend(temperature, humidity);
     Serial.print(currentMillis / 1000);
-    Serial.println(" sekunder");
+    Serial.println(" seconds");
   }
   
   if (buttonState == LOW) {
-    Serial.println("Tryck på knapp!");
+    Serial.println("Press button, sending manually to DB!");
     delay(50);
-    sendTempToBackend( temperature,  humidity);
+    sendTempToBackend(temperature, humidity); 
+  }
+  if (buttonSendToBackendState == LOW && lastButtonSendToBackendState == HIGH) {
+    delay(500);
+    autoSending = !autoSending;
+    digitalWrite(sendToDbLED, autoSending ? HIGH : LOW);
+    if (autoSending) {
+    Serial.println("Sending data to backend timer ON");}
+    else {
+    Serial.println("Sending data to backend timer OFF");
+    }
+    
   }
 }
 
@@ -108,17 +129,25 @@ void sendTempToBackend(float temperature, float humidity) {
     return;
   }
 
-  String postData = "{\"temp\": \"" + String(temperature) + "\", \"humidity\": \"" + String(humidity) + "\"}";
-  Serial.println("Skickar data till databasen!");
+  String postData = "{\"temp\": \"" + String(temperature, 2) + "\", \"humidity\": \"" + String(humidity, 2) + "\"}";
+  Serial.println("Sending data to the database!");
+  
+  client.stop(); 
+  delay(100); 
+
+  unsigned long startMillis = millis();
   client.beginRequest();
   client.post("/temp");
 
   client.sendHeader("Content-Type", "application/json");
-  client.sendHeader("Content-length", postData.length());
+  client.sendHeader("Content-Length", postData.length());
 
   client.beginBody();
   client.print(postData);
   client.endRequest();
+
+  while (!client.available() && (millis() - startMillis) < 5000) {
+  }
 
   int statusCode = client.responseStatusCode();
   String response = client.responseBody();
@@ -127,10 +156,6 @@ void sendTempToBackend(float temperature, float humidity) {
   Serial.println(statusCode);
   Serial.print("Response: ");
   Serial.println(response);
-  Serial.print("Temperature = ");
-  Serial.println(temperature);
-  Serial.print("Humidity = ");
-  Serial.println(humidity);
 
   if (statusCode == 200) {
     digitalWrite(sendDataLedNOTOK, LOW);
@@ -150,32 +175,39 @@ void sendTempToBackend(float temperature, float humidity) {
     delay(3000);
     digitalWrite(sendDataLedOK, LOW);
   } else {
-    Serial.print("Error kunde inte skicka data!");
+    Serial.print("Error: Could not send data!");
     digitalWrite(sendDataLedNOTOK, HIGH);
   }
 }
 
-void sendLiveTempToBackend( float temperature, float humidity) {
+void sendLiveTempToBackend(float temperature, float humidity) {
   if (isnan(temperature) || isnan(humidity)) {
-    Serial.println("Kunde inte läsa från DHT sensor!");
+    Serial.println("Failed to read from DHT sensor!");
     digitalWrite(sendDataLedNOTOK, HIGH);
     delay(5000);
     digitalWrite(sendDataLedNOTOK, LOW);
     return;
   }
 
-  String postData = "{\"temp\": \"" + String(temperature) + "\", \"humidity\": \"" + String(humidity) + "\"}";
-  Serial.println("Skickar LiveTemp");
+  String postData = "{\"temp\": \"" + String(temperature, 2) + "\", \"humidity\": \"" + String(humidity, 2) + "\"}";
+  Serial.println("Sending live temperature data");
+  
+  client.stop(); 
+  delay(100); 
+
+  unsigned long startMillis = millis();
   client.beginRequest();
   client.post("/live");
 
   client.sendHeader("Content-Type", "application/json");
-  client.sendHeader("Content-length", postData.length());
+  client.sendHeader("Content-Length", postData.length());
 
   client.beginBody();
   client.print(postData);
   client.endRequest();
 
+  while (!client.available() && (millis() - startMillis) < 5000) {
+  }
 
   int statusCode = client.responseStatusCode();
   String response = client.responseBody();
@@ -184,27 +216,22 @@ void sendLiveTempToBackend( float temperature, float humidity) {
   Serial.println(statusCode);
   Serial.print("Response: ");
   Serial.println(response);
-  Serial.print("Temperature = ");
-  Serial.println(temperature);
-  Serial.print("Humidity = ");
-  Serial.println(humidity);
 
   if (statusCode == 200) {
     digitalWrite(sendDataLedOK, HIGH);
     delay(1000);
     digitalWrite(sendDataLedOK, LOW);
-    digitalWrite(sendDataLedNOTOK, LOW);
   } else {
-    Serial.print("Error kunde inte skicka data!");
+    Serial.print("Error: Could not send data!");
     digitalWrite(sendDataLedNOTOK, HIGH);
   }
 }
 
 void clearLcdScreen() {
   lcd.setCursor(0, 0);
-  lcd.print("                                           ");
+  lcd.print("                "); 
   lcd.setCursor(0, 1);
-  lcd.print("                                           ");
+  lcd.print("                "); 
 }
 
 void setScreen(float temperature, float humidity) {
@@ -216,19 +243,25 @@ void setScreen(float temperature, float humidity) {
   lcd.print(temperature);
   lcd.print("C");
 
-  client.get("/time");
   
+  client.stop(); 
+  delay(100); 
+
+  unsigned long startMillis = millis();
+  client.get("/time");
+
+  while (!client.available() && (millis() - startMillis) < 5000) {
+  }
+
   int statusCode = client.responseStatusCode();
   String response = client.responseBody();
 
   lcd.setCursor(0, 1);
-  if ( statusCode == 200) {
+  if (statusCode == 200) {
     lcd.print(response);
-    digitalWrite(sendDataLedNOTOK, LOW);
+    Serial.println("Printing time!");
+  } else {
+    lcd.print("Couldn't get time");
+    Serial.println("Couldn't get time");
   }
-  else {
-    lcd.print("Couldn't gettime");
-    digitalWrite(sendDataLedNOTOK, HIGH);
-  }
-  
 }
