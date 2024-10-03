@@ -2,6 +2,12 @@
 Jag har gjort en Adruino modul som samlar in fukt och temp data som sedan skickar vidare till en LCD skärm. Finns status markörer som Grön led för skicka data status=ok (200)<br>
 Ifall något fel inträffar med givare eller servern så tänds röd led och ifall datum inte kan hämtas syns det även i skärmen.
 
+för att starta lokalt ändra WiFi Client till detta: <br>
+Där XX XXX är din lokala ip adress <br>
+char serverAdress[] = "192.168.XX.XXX";<br>
+int port = 3000;<br>
+WiFiClient wifi;<br>
+
 Färgkod:<br>
 1 mellan snabb grön led = skickar live temp och fukt som sparas som en variabel <br>
 3 snabba och en långsam grön led = skickar data till backend för lagring i databas<br>
