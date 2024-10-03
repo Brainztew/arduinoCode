@@ -24,13 +24,12 @@ int lastButtonSendToBackendState = 1;
 char ssid[] = SECRET_SSID;
 char pass[] = SECRET_PASSWORD;
 
-char serverAdress[] = "192.168.0.215";
-int port = 3000;
+char serverAdress[] = "seahorse-app-ql4ym.ondigitalocean.app";
+int port = 443;
 
-WiFiClient wifi;
+WiFiSSLClient wifi;
 HttpClient client = HttpClient(wifi, serverAdress, port);
 
-WiFiServer server(80);
 
 IPAddress ip;
 unsigned long previousTempMillis = 0;
@@ -260,8 +259,11 @@ void setScreen(float temperature, float humidity) {
   if (statusCode == 200) {
     lcd.print(response);
     Serial.println("Printing time!");
+    digitalWrite(sendDataLedNOTOK, LOW);
   } else {
     lcd.print("Couldn't get time");
     Serial.println("Couldn't get time");
+    digitalWrite(sendDataLedNOTOK, HIGH);
+
   }
 }
